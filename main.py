@@ -1,9 +1,12 @@
 from flask import Flask
 import fdb
+from flask_bcrypt import Bcrypt
 
 
 app = Flask(__name__)
 app.config.from_pyfile('config.py')
+
+bcrypt = Bcrypt(app)
 
 host = app.config['DB_HOST']
 database = app.config['DB_NAME']
@@ -13,12 +16,11 @@ password = app.config['DB_PASSWORD']
 try:
     con = fdb.connect(host=host, database=database, user=user, password=password)
     print("Conexão foi um sucesso!")
-
 except Exception as e:
-    print(f"Erro na conexão : {e}")
+    print(f"Erro na conexão: {e}")
+
 
 from view import *
 
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port= 5000)
