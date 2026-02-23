@@ -2,6 +2,11 @@ from flask import jsonify, request, Response
 from main import app, con, bcrypt
 from funcao import verificar_senha_forte
 from fpdf import FPDF
+import os
+
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
+
 
 
 'LIVROS'
@@ -34,12 +39,12 @@ def livro():
 
 @app.route('/criar_livro', methods=['POST'])
 def criar_livro():
-        data = request.get_json()
 
 
-        titulo = data.get('titulo')
-        autor = data.get('autor')
-        ano_publicacao = data.get('ano_publicacao')
+        titulo = request.form.get('titulo')
+        autor = request.form.get('autor')
+        ano_publicacao = request.form.get('ano_publicacao')
+        imagem = request.files.get('imagem')
 
         try:
 
@@ -47,12 +52,23 @@ def criar_livro():
             cursor.execute("SELECT 1 FROM livros WHERE titulo = ? ", (titulo,))
             if cursor.fetchone():
                 return jsonify({"error": "Livro já cadastrado"}), 400
-            cursor.execute("INSERT INTO livros (titulo, autor, ano_publicacao) VALUES (?,?,?)",
+            cursor.execute("INSERT INTO livros (titulo, autor, ano_publicacao) VALUES (?,?,?) RETURNING id_livro",
                                                         (titulo, autor, ano_publicacao))
 
 
+            codigo_livro = cursor.fetchone()[0]
+
 
             con.commit()
+
+            caminho_imagem = None
+
+            if imagem:
+                nome_imagem = f'{codigo_livro}.jpg'
+                caminho_imagem_destino = os.path.join(app.config['UPLOAD_FOLDER'], "Livros")
+                os.makedirs(caminho_imagem_destino, exist_ok= True)
+                caminho_imagem = os.path.join(caminho_imagem_destino, nome_imagem)
+                imagem.save(caminho_imagem)
 
 
             return jsonify({
@@ -134,7 +150,7 @@ def apagar_livros(id):
 
 
 
-'Usuarios'
+'USUÁRIOS'
 
 @app.route('/usuarios', methods=['GET'])
 def listar_usuarios():
@@ -432,14 +448,5 @@ def relatorio_usuarios():
         return jsonify(mensagem=f"Erro: {e}"), 500
     finally:
         cursor.close()
-
-
-
-
-
-
-
-
-
 
 

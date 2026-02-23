@@ -13,6 +13,7 @@ database = app.config['DB_NAME']
 user = app.config['DB_USER']
 password = app.config['DB_PASSWORD']
 
+
 try:
     con = fdb.connect(host=host, database=database, user=user, password=password)
     print("Conexão foi um sucesso!")
