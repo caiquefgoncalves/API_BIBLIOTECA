@@ -1,8 +1,11 @@
 from flask import jsonify, request, Response
 from main import app, con, bcrypt
-from funcao import verificar_senha_forte
+from funcao import verificar_senha_forte, enviando_email
 from fpdf import FPDF
 import os
+import pygal
+import threading
+
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
@@ -450,3 +453,33 @@ def relatorio_usuarios():
         cursor.close()
 
 
+@app.route('/grafico')
+def grafico():
+    cursor = con.cursor()
+
+    cursor.execute('SELECT ano_publicacao, count(*) FROM livros GROUP BY ano_publicacao ORDER BY ano_publicacao')
+
+    resultado = cursor.fetchall()
+    cursor.close()
+
+    grafico = pygal.Bar()
+    grafico.title = 'Quantidade de livros por ano'
+
+    for g in resultado:
+        grafico.add(str(g[0]), g[1])
+    return Response(grafico.render(), mimetype='image/svg+xml')
+
+
+@app.route('/enviar_email', methods=['POST'])
+def enviar_email():
+    dados = request.json
+
+    assunto = dados.get('subject')
+    mensagem = dados.get('message')
+    destinatario = dados.get('to')
+
+    thread = threading.Thread(target=enviando_email, args=(assunto, mensagem, destinatario))
+
+    thread.start()
+
+    return jsonify({'mensagem': 'Email enviado com sucesso'}), 200

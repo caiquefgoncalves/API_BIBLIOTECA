@@ -1,3 +1,21 @@
+import smtplib
+from email.mime.text import MIMEText
+
+def enviando_email(destinatario, assunto, mensagem):
+    user = 'caiquefachinigoncalves@gmail.com'
+    senha = 'vzpa yqgs sxbi wgih'
+
+    msg = MIMEText(mensagem)
+    msg['From'] = user
+    msg['To'] =  destinatario
+    msg['Subject'] = assunto
+
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.starttls()
+    server.login(user, senha)
+    server.sendmail(msg)
+    server.quit()
+
 def verificar_senha_forte(senha):
     if len(senha) < 8:
         return False, "A senha deve ter pelo menos 8 caracteres"
