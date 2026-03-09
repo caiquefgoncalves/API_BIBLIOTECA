@@ -1,9 +1,11 @@
 from flask import Flask
 import fdb
 from flask_bcrypt import Bcrypt
+from flask_cors import CORS
 
 
 app = Flask(__name__)
+CORS(app, origins='*')
 app.config.from_pyfile('config.py')
 
 bcrypt = Bcrypt(app)

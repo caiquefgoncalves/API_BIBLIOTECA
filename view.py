@@ -1,10 +1,14 @@
-from flask import jsonify, request, Response
+from flask import jsonify, request, Response, make_response
 from main import app, con, bcrypt
-from funcao import verificar_senha_forte, enviando_email
+from funcao import verificar_senha_forte, enviando_email, gerar_token, remover_bearer, senha_secreta
 from fpdf import FPDF
 import os
 import pygal
 import threading
+import jwt
+
+
+
 
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
@@ -42,14 +46,23 @@ def livro():
 
 @app.route('/criar_livro', methods=['POST'])
 def criar_livro():
+    # token = request.headers.get('Authorization')
+    token = request.headers.get('acess_token')
+    if not token:
+        return jsonify({'message': 'Token necessário'}), 401
+    token = remover_bearer(token)
 
-
-        titulo = request.form.get('titulo')
-        autor = request.form.get('autor')
-        ano_publicacao = request.form.get('ano_publicacao')
-        imagem = request.files.get('imagem')
-
-        try:
+    try:
+        payload = jwt.decode(token, senha_secreta, algorithms=['HS256'])
+    except jwt.ExpiredSignatureError:
+        return jsonify({'message': 'Token expirado'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'message': 'Token inválido'}), 401
+    try:
+            titulo = request.form.get('titulo')
+            autor = request.form.get('autor')
+            ano_publicacao = request.form.get('ano_publicacao')
+            imagem = request.files.get('imagem')
 
             cursor = con.cursor()
             cursor.execute("SELECT 1 FROM livros WHERE titulo = ? ", (titulo,))
@@ -85,10 +98,10 @@ def criar_livro():
 
 
 
-        except Exception as e:
-            return jsonify(mensagem=f"Erro ao consultar banco de dados: {e}"), 500
-        finally:
-            cursor.close()
+    except Exception as e:
+        return jsonify(mensagem=f"Erro ao consultar banco de dados: {e}"), 500
+    finally:
+        cursor.close()
 
 
 
@@ -295,8 +308,48 @@ def apagar_usuario(id):
 
 
 
-@app.route('/login', methods=['POST'])
-def login():
+# @app.route('/login', methods=['POST'])
+# def login():
+#     data = request.get_json()
+#     email_login = data.get('email')
+#     senha_login = data.get('senha')
+#
+#     if not email_login or not senha_login:
+#         return jsonify({'error': "Informe email e senha"}), 400
+#
+#     cursor = con.cursor()
+#
+#     try:
+#         cursor.execute('SELECT id_usuario, senha, nome, email FROM usuarios WHERE email = ?', (email_login,))
+#         dados_achados = cursor.fetchone()
+#
+#         if not dados_achados:
+#             return jsonify({'error': "Email ou senha incorretos"}), 401
+#
+#         id_usuario = dados_achados[0]
+#         senha_usuario = dados_achados[1]
+#         nome_usuario = dados_achados[2]
+#         email_usuario = dados_achados[3]
+#
+#         if bcrypt.check_password_hash(senha_usuario, senha_login):
+#             token = gerar_token(id_usuario)
+#             return jsonify({'message': "Login realizado com sucesso!",
+#                             'usuario':{
+#                                 "nome": nome_usuario,
+#                                 "email": email_usuario,
+#                                 "token": token
+#                             }}), 200
+#
+#         else:
+#             return jsonify({'error': "Email ou senha incorretos"}), 401
+#
+#     except Exception as e:
+#         return jsonify(mensagem=f'Erro no login: {e}'), 500
+#     finally:
+#         cursor.close()
+
+@app.route('/login_cookie', methods=['POST'])
+def login_cookie():
     data = request.get_json()
     email_login = data.get('email')
     senha_login = data.get('senha')
@@ -307,22 +360,33 @@ def login():
     cursor = con.cursor()
 
     try:
-        cursor.execute('SELECT senha, nome, email FROM usuarios WHERE email = ?', (email_login,))
+        cursor.execute('SELECT id_usuario, senha, nome, email FROM usuarios WHERE email = ?', (email_login,))
         dados_achados = cursor.fetchone()
 
         if not dados_achados:
             return jsonify({'error': "Email ou senha incorretos"}), 401
 
-        senha_usuario = dados_achados[0]
-        nome_usuario = dados_achados[1]
-        email_usuario = dados_achados[2]
+        id_usuario = dados_achados[0]
+        senha_usuario = dados_achados[1]
+        nome_usuario = dados_achados[2]
+        email_usuario = dados_achados[3]
 
         if bcrypt.check_password_hash(senha_usuario, senha_login):
-            return jsonify({'message': "Login realizado com sucesso!",
-                            'usuario':{
-                                "nome": nome_usuario,
-                                "email": email_usuario
-                            }}), 200
+            token = gerar_token(id_usuario)
+            resp = make_response(jsonify({'message': "Login realizado com sucesso"}))
+            resp.set_cookie('acess_token', token,
+                            httponly=True,
+                            secure=False,
+                            samesite='Lax',
+                            path= '/',
+                            max_age=3600)
+            return resp
+            # return jsonify({'message': "Login realizado com sucesso!",
+            #                 'usuario':{
+            #                     "nome": nome_usuario,
+            #                     "email": email_usuario,
+            #                     "token": token
+            #                 }}), 200
 
         else:
             return jsonify({'error': "Email ou senha incorretos"}), 401
@@ -354,7 +418,7 @@ def relatorio_livros():
         w_autor = 50
         w_ano = 30
 
-        # Cabeçalho da Tabela
+
         pdf.set_font("Arial", 'B', 10)
         pdf.cell(w_id, 10, "ID", 1, 0, 'C')
         pdf.cell(w_titulo, 10, "Título", 1, 0, 'C')
@@ -404,7 +468,7 @@ def relatorio_usuarios():
         pdf.add_page()
         pdf.set_font("Arial", size=12)
 
-        # Título
+
         pdf.cell(200, 10, txt="Relatório de Usuários", ln=1, align="C")
         pdf.ln(10)
 
@@ -474,11 +538,12 @@ def grafico():
 def enviar_email():
     dados = request.json
 
+    destinatario = dados.get('to')
     assunto = dados.get('subject')
     mensagem = dados.get('message')
-    destinatario = dados.get('to')
 
-    thread = threading.Thread(target=enviando_email, args=(assunto, mensagem, destinatario))
+
+    thread = threading.Thread(target=enviando_email, args=(destinatario, assunto, mensagem, ))
 
     thread.start()
 
